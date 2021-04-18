@@ -1,0 +1,10 @@
+apiVersion: app.redislabs.com/v1alpha1
+kind: RedisEnterpriseDatabase
+metadata:
+  name: dbgitop 
+spec:
+  redisEnterpriseCluster:
+    name: rec
+  memorySize: 10GB
+  replication: true
+  shardCount: 1 

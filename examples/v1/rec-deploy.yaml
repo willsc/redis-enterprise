@@ -1,0 +1,19 @@
+apiVersion: app.redislabs.com/v1
+kind: RedisEnterpriseCluster
+metadata:
+  name: rec
+spec:
+  # Add fields here
+  nodes: 3
+  redisEnterpriseImageSpec:
+    imagePullPolicy:  IfNotPresent
+    repository:       gcr.io/redis-310921/redis
+    versionTag:       6.0.12-57
+  redisEnterpriseServicesRiggerImageSpec:
+    imagePullPolicy:  IfNotPresent
+    repository:       gcr.io/redis-310921/k8s-controller
+    versionTag:       6.0.12-5
+  bootstrapperImageSpec:
+    imagePullPolicy:  IfNotPresent
+    repository:       gcr.io/redis-310921/operator 
+    versionTag:       6.0.12-5
