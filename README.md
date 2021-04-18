@@ -1,1 +1,1 @@
-# redis-enterprise
+# redis-enterprise on K8s
