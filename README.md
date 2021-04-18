@@ -15,6 +15,235 @@
 
 This page describe how to deploy Redis Enterprise on Kubernetes using the Redis Enterprise Operator. High level architecture and overview of the solution can be found [HERE](https://docs.redislabs.com/latest/platforms/kubernetes/).
 
+
+Supplemental note:
+
+Assuming there is a k8s cluster running in GCP.
+
+This assumes that you have all of the  images downloaded in GCR IO
+
+Docker pull and push the following to GCR.
+```
+docker tag 7c36989ab04d gcr.io/redis-310921/redis
+docker push 7c36989ab04d gcr.io/redis-310921/redis
+```
+```
+docker tag 4359523d2a11 gcr.io/redis-310921/k8s-controller
+docker push gcr.io/redis-310921/k8s-controller
+```
+```
+docker tag 6561d02b72fd gcr.io/redis-310921/operator
+docker push gcr.io/redis-310921/operator
+```
+
+Create a namespace named Redis
+
+* kubectl create namespace Redis
+* Modify bundle.yaml specify where the local image will come from.
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-enterprise-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: redis-enterprise-operator
+  template:
+    metadata:
+      labels:
+        name: redis-enterprise-operator
+    spec:
+      serviceAccountName: redis-enterprise-operator
+      containers:
+        - name: redis-enterprise-operator
+          image: gcr.io/inspiring-cat-308916/operator:6.0.12-5
+          command:
+          - redis-enterprise-operator
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "redis-enterprise-operator"
+            - name: DATABASE_CONTROLLER_ENABLED
+              value: "true"
+          resources:
+            limits:
+              cpu: 4000m
+              memory: 512Mi
+            requests:
+              cpu: 500m
+              memory: 256Mi
+
+```
+
+* Run kubectl apply -f bundle.yaml -n redis
+```
+Kubectl apply -f bundle.yaml -n redis                                                                
+role.rbac.authorization.k8s.io/redis-enterprise-operator created
+rolebinding.rbac.authorization.k8s.io/redis-enterprise-operator created
+serviceaccount/redis-enterprise-operator created
+customresourcedefinition.apiextensions.k8s.io/redisenterpriseclusters.app.redislabs.com created
+deployment.apps/redis-enterprise-operator created
+customresourcedefinition.apiextensions.k8s.io/redisenterprisedatabases.app.redislabs.com created
+
+
+Kubectl get pods -n redis                                           
+NAME                                         READY   STATUS    RESTARTS   AGE
+redis-enterprise-operator-64b87c976c-f26mq   1/1     Running   0          4s
+
+```
+
+
+
+Next:
+
+
+Run the following:
+
+
+
+If using, pod security you will need to modify ./examples/v1/rec.yaml as shown below. Ensure that follwing is deployed prior to the rec.yaml below:
+```
+psp.yaml:
+
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: redis-enterprise-psp
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  allowedCapabilities:
+    - SYS_RESOURCE
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+    - min: 1001
+      max: 1001
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  volumes:
+    - '*'
+```
+```
+rec.yaml:
+
+apiVersion: app.redislabs.com/v1
+kind: RedisEnterpriseCluster
+metadata:
+  name: rec
+spec:
+  # Add fields here
+  nodes: 3
+  podSecurityPolicyName: “Redis-enterprise-psp"
+  redisEnterpriseImageSpec:
+    imagePullPolicy:  IfNotPresent
+    repository:       gcr.io/redis-310921/redis
+    versionTag:       6.0.12-57
+  redisEnterpriseServicesRiggerImageSpec:
+    imagePullPolicy:  IfNotPresent
+    repository:       gcr.io/redis-310921/k8s-controller
+    versionTag:       6.0.12-5
+  bootstrapperImageSpec:
+    imagePullPolicy:  IfNotPresent
+    repository:       gcr.io/redis-310921/operator
+    versionTag:       6.0.12-5
+
+
+
+      17m
+NAME                                         READY   STATUS    RESTARTS   AGE
+rec-0                                        2/2     Running   0          6m17s
+rec-1                                        2/2     Running   0          4m10s
+rec-2                                        1/2     Running   0          2m2s
+rec-services-rigger-8df7c46d5-ltxkc          1/1     Running   0          6m17s
+redis-enterprise-operator-75c9c7d59f-z8gjr   1/1     Running   0          19m
+```
+
+
+Start GUI locally:
+
+```
+Kubectl  port-forward -n redis svc/rec-ui 8443:8443                                                                                           
+Forwarding from 127.0.0.1:8443 -> 8443
+Forwarding from [::1]:8443 -> 8443
+```
+
+Obtain user name and password:
+```
+pw=$(kubectl get secret -n redis rec -o jsonpath="{.data.password}" | base64 —decode)
+Echo $pw
+
+We1zf9eB
+
+user=$(kubectl get secret -n redis rec -o jsonpath="{.data.username}" | base64 --decode)
+❯ echo $user
+
+demo@redislabs.com
+```
+
+Create a database
+
+```
+
+Kubectl apply -n redis  -f - <<EOF
+apiVersion: app.redislabs.com/v1alpha1
+kind: RedisEnterpriseDatabase
+metadata:
+  name: testDB
+spec:
+  redisEnterpriseCluster:
+    Name: rec
+  memorySize: 70GB
+  replication: true
+  shardCount: 2
+EOF
+   
+```
+
+Create new database with the following piece of yaml. (Will only work if you have a license)
+```
+dbcreate.yaml:
+
+apiVersion: app.redislabs.com/v1alpha1
+kind: RedisEnterpriseDatabase
+metadata:
+  name: dbgitop
+spec:
+  redisEnterpriseCluster:
+    name: rec
+  memorySize: 10GB
+  replication: true
+  shardCount: 1
+
+```
+
+Database service:
+
+```
+
+NAME           TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)                      AGE
+foo            ClusterIP   10.76.9.158   <none>        12560/TCP                    136m
+foo-headless   ClusterIP   None          <none>        12560/TCP                    136m
+rec            ClusterIP   None          <none>        9443/TCP,8001/TCP,8070/TCP   3h16m
+rec-ui         ClusterIP   10.76.10.66   <none>        8443/TCP                     3h16m
+
+```
+
+
 ## Quickstart Guide
 
 ### Prerequisites
