@@ -16,7 +16,7 @@
 This page describe how to deploy Redis Enterprise on Kubernetes using the Redis Enterprise Operator. High level architecture and overview of the solution can be found [HERE](https://docs.redislabs.com/latest/platforms/kubernetes/).
 
 
-Supplemental note:
+# Supplemental note:
 
 Assuming there is a k8s cluster running in GCP.
 
